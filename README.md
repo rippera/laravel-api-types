@@ -11,7 +11,7 @@ php artisan api-types:generate --check   # CI-სთვის: ჩავარ�
 ## ინსტალაცია
 
 ```bash
-composer require your-vendor/laravel-api-types --dev
+composer require rippera/laravel-api-types --dev
 php artisan vendor:publish --tag=api-types-config
 ```
 
@@ -19,13 +19,13 @@ Sail-ში: `./vendor/bin/sail composer require ...` და `./vendor/bin/sail 
 
 ## რას აგენერირებს
 
-| ფაილი          | შიგთავსი |
-|----------------|----------|
-| `enums.ts`     | `app/Enums`-ში არსებული და `Rule::enum()`-ით გამოყენებული ყველა enum |
-| `requests.ts`  | თითო FormRequest-ზე ერთი `interface` |
+| ფაილი          | შიგთავსი                                                                                                          |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `enums.ts`     | `app/Enums`-ში არსებული და `Rule::enum()`-ით გამოყენებული ყველა enum                                              |
+| `requests.ts`  | თითო FormRequest-ზე ერთი `interface`                                                                              |
 | `resources.ts` | API Resource-ების და მოდელების interface-ები + პასუხის wrapper-ები (`ResourceResponse`, `PaginatedResponse`, ...) |
-| `endpoints.ts` | `Endpoints` ტიპი (method / params / query / body / **response**), `endpoints` const, `url()` helper |
-| `index.ts`     | ყველაფრის re-export |
+| `endpoints.ts` | `Endpoints` ტიპი (method / params / query / body / **response**), `endpoints` const, `url()` helper               |
+| `index.ts`     | ყველაფრის re-export                                                                                               |
 
 ## როგორ მუშაობს
 

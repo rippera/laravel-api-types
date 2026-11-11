@@ -1,58 +1,64 @@
 # laravel-api-types
 
-Artisan ბრძანება, რომელიც Laravel-ის API route-ებს, მათ FormRequest-ებს და PHP enum-ებს კითხულობს და TypeScript ფაილებს აგენერირებს.
+An Artisan command that reads your Laravel API routes, their FormRequests, API Resources and PHP enums, and generates TypeScript types from them.
 
 ```bash
 php artisan api-types:generate
 php artisan api-types:generate --path=frontend/src/api --enum-style=const
-php artisan api-types:generate --check   # CI-სთვის: ჩავარდება, თუ ტიპები მოძველებულია
+php artisan api-types:generate --check   # for CI: fails if the generated types are out of date
 ```
 
-## ინსტალაცია
+## Requirements
+
+- PHP 8.1+
+- Laravel 10, 11, 12 or 13
+- `nikic/php-parser` ^5.0 (installed automatically)
+
+## Installation
 
 ```bash
 composer require rippera/laravel-api-types --dev
 php artisan vendor:publish --tag=api-types-config
 ```
 
-Sail-ში: `./vendor/bin/sail composer require ...` და `./vendor/bin/sail artisan api-types:generate`.
+With Sail: `./vendor/bin/sail composer require ...` and `./vendor/bin/sail artisan api-types:generate`.
 
-## რას აგენერირებს
+## What it generates
 
-| ფაილი          | შიგთავსი                                                                                                          |
-| -------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `enums.ts`     | `app/Enums`-ში არსებული და `Rule::enum()`-ით გამოყენებული ყველა enum                                              |
-| `requests.ts`  | თითო FormRequest-ზე ერთი `interface`                                                                              |
-| `resources.ts` | API Resource-ების და მოდელების interface-ები + პასუხის wrapper-ები (`ResourceResponse`, `PaginatedResponse`, ...) |
-| `endpoints.ts` | `Endpoints` ტიპი (method / params / query / body / **response**), `endpoints` const, `url()` helper               |
-| `index.ts`     | ყველაფრის re-export                                                                                               |
+| File           | Contents                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `enums.ts`     | Every enum in `app/Enums` and every enum used via `Rule::enum()`                                                 |
+| `requests.ts`  | One `interface` per FormRequest                                                                                  |
+| `resources.ts` | Interfaces for API Resources and models, plus response wrappers (`ResourceResponse`, `PaginatedResponse`, ...)   |
+| `endpoints.ts` | The `Endpoints` type (method / params / query / body / **response**), the `endpoints` const and a `url()` helper |
+| `index.ts`     | Re-exports everything                                                                                            |
 
-## როგორ მუშაობს
+## How it works
 
-1. `RouteCollector` — გადის `Route::getRoutes()`-ზე, ფილტრავს prefix-ით/სახელით, იღებს HTTP method-ებს და `{param}`/`{param?}` პარამეტრებს.
-2. Controller-ის მეთოდს Reflection-ით ამოწმებს და პოულობს FormRequest-ის ტიპის პარამეტრს.
-3. `RulesExtractor` — FormRequest-ს ქმნის container-ის გარეშე (რომ ვალიდაცია არ გაეშვას) და იძახებს `rules()`-ს.
-4. `TypeMapper` — წესებს TS ტიპებად აქცევს (`required` → სავალდებულო, `nullable` → `| null`, `items.*.id` → `Array<{ id: number }>`, `Rule::enum` → enum, `in:` → literal union).
-5. `TypeScriptWriter` — წერს ფაილებს.
+1. `RouteCollector` iterates over `Route::getRoutes()`, filters routes by prefix and name, and collects HTTP methods and `{param}` / `{param?}` parameters.
+2. It inspects the controller method via Reflection to find a FormRequest-typed parameter.
+3. `RulesExtractor` instantiates the FormRequest without the container (so validation doesn't run) and calls `rules()`.
+4. `TypeMapper` turns the rules into TypeScript types (`required` → required property, `nullable` → `| null`, `items.*.id` → `Array<{ id: number }>`, `Rule::enum` → enum, `in:` → literal union).
+5. `TypeScriptWriter` writes the files.
 
-## პასუხის ტიპები (response)
+## Response types
 
-რას აბრუნებს action, დგინდება ამ თანმიმდევრობით:
+What an action returns is determined in this order:
 
-1. `#[ApiResponse(...)]` ატრიბუტი controller-ის მეთოდზე
-2. native return type: `): UserResource`, `): PostCollection`, `): User`
-3. მეთოდის ტანი: `UserResource::collection(...)`, `UserResource::make(...)`, `new UserResource(...)`, `return $user` (type-hint-იანი Model), `noContent()`
-   - `->paginate()` / `->simplePaginate()` / `->cursorPaginate()` → შესაბამისი paginated wrapper
+1. An `#[ApiResponse(...)]` attribute on the controller method
+2. The native return type: `): UserResource`, `): PostCollection`, `): User`
+3. The method body: `UserResource::collection(...)`, `UserResource::make(...)`, `new UserResource(...)`, `return $user` (a type-hinted model), `noContent()`
+   - `->paginate()` / `->simplePaginate()` / `->cursorPaginate()` → the matching paginated wrapper
 
-Resource-ის ფორმა იკითხება `toArray()`-ის სტატიკური ანალიზით (nikic/php-parser):
+The shape of a resource is inferred by statically analysing its `toArray()` method (using nikic/php-parser):
 
-- `$this->id` → ტიპი DB სქემიდან + `$casts`-დან (enum cast → TS enum, nullable სვეტი → `| null`)
+- `$this->id` → type taken from the DB schema and `$casts` (enum cast → TS enum, nullable column → `| null`)
 - `XResource::collection($this->whenLoaded('x'))` → `x?: XResource[]`
-- `$this->when(...)`, `whenLoaded`, `whenCounted`, `mergeWhen` → optional ველები
-- `parent::toArray($request)` / `toArray()`-ის არქონა → მოდელის ყველა ატრიბუტი (`$hidden`-ის გარეშე, `$appends`-ით)
-- მოდელი იძებნება `@mixin \App\Models\User` docblock-ით ან კონვენციით (`UserResource` → `App\Models\User`)
+- `$this->when(...)`, `whenLoaded`, `whenCounted`, `mergeWhen` → optional properties
+- `parent::toArray($request)` or no `toArray()` at all → all model attributes (excluding `$hidden`, including `$appends`)
+- The model is resolved from a `@mixin \App\Models\User` docblock, or by convention (`UserResource` → `App\Models\User`)
 
-რისი დადგენაც ვერ ხერხდება, ხდება `unknown`. ასეთ ველს ხელით ასწორებ:
+Anything that can't be inferred becomes `unknown`. You can fix such properties by hand:
 
 ```php
 #[TsProperty('settings', 'Record<string, boolean>')]
@@ -65,12 +71,16 @@ public function index() { ... }
 public function ping() { ... }
 ```
 
-> DB-ის სვეტების ტიპების წასაკითხად ბრძანებას DB კავშირი სჭირდება (`Schema::getColumns`). კავშირის გარეშე მხოლოდ `$casts` გამოიყენება.
+> Reading column types requires a database connection (`Schema::getColumns`). Without one, only `$casts` are used.
 
-## შეზღუდვები / შემდეგი ნაბიჯები
+## Limitations / roadmap
 
-- Controller-ში inline `$request->validate([...])` არ იკითხება — მხოლოდ FormRequest.
-- `rules()`, რომელიც `$this->route('user')->id`-ს იყენებს, route binding-ის გარეშე შეიძლება ჩავარდეს — ბრძანება warning-ს გამოიტანს და ტიპს ცარიელს დატოვებს.
-- `response()->json([...])` ხელით აწყობილი მასივი არ ანალიზდება — გამოიყენე `#[ApiResponse('...')]`.
-- `Attribute::make(get: ...)` ტიპის accessor-ების ტიპი არ იკითხება (მხოლოდ `getXAttribute(): string`).
-- Resource-ის `with()` / `additional()` meta ველები არ ემატება.
+- Inline `$request->validate([...])` calls in controllers are not read — only FormRequests.
+- A `rules()` method that uses `$this->route('user')->id` may fail without route model binding — the command prints a warning and leaves that type empty.
+- Hand-built arrays in `response()->json([...])` are not analysed — use `#[ApiResponse('...')]` instead.
+- Types of `Attribute::make(get: ...)` accessors are not read (only `getXAttribute(): string`).
+- A resource's `with()` / `additional()` meta fields are not included.
+
+## License
+
+MIT
